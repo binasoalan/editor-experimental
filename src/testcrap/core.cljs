@@ -36,15 +36,11 @@
   (let [st @state]
     {:value (om/db->tree query (get st key) st)}))
 
-;; (defmethod read :questions/edit
-;;   [{:keys [query state]} _ _]
-;;   (let [st @state]
-;;     {:value (om/db->tree query (get st :questions) st)}))
-
 (defmethod read :question/edit
-  [{:keys [query state]} _ {:keys [index]}]
-  (let [st @state]
-    {:value (nth (om/db->tree query (get st :questions) st) index)}))
+  [{:keys [query state] :as env} _ {:keys [index]}]
+  (let [st @state
+        ref (nth (:questions st) index)]
+    {:value (assoc (om/db->tree query ref st) :ref ref)}))
 
 (defmethod read :answers
   [{:keys [query state]} key _]
@@ -61,13 +57,8 @@
 
 (defmulti mutate om/dispatch)
 
-;; (defmethod mutate 'answer/edit
-;;   [{:keys [state]} _ {:keys [text index]}]
-;;   (let [ref (nth (:answers @state) index)]
-;;     {:action #(swap! state update-in ref assoc :text text)}))
-
 (defmethod mutate 'question/edit
-  [{:keys [state ref]} _ {:keys [text]}]
+  [{:keys [state]} _ {:keys [text ref]}]
   {:action #(swap! state update-in ref assoc :text text)})
 
 (defmethod mutate 'answer/hodor
@@ -122,49 +113,35 @@
 (def question (om/factory Question {:keyfn :id}))
 
 
-(defui QuestionEditor
-  static om/Ident
-  (ident [this {:keys [question/edit]}]
-    [:question/by-id (:id edit)])
+(defn question-editor [form props]
+  (let [{:keys [text answers ref]} props]
+    [:div
+     [:input
+      {:type "text"
+       :value (str text)
+       :on-change
+       (fn [e]
+         (let [new-text (.. e -target -value)]
+           (om/transact!
+            form `[(question/edit {:text ~new-text
+                                   :ref ~ref})])))}]
+     [:button
+      {:on-click
+       (fn [e]
+         (om/update-query!
+          form update-in [:params :index] inc))}
+      "Next"]]))
 
+
+(defui Form
   static om/IQueryParams
   (params [this]
     {:index 0})
 
   static om/IQuery
   (query [this]
-    [{'(:question/edit {:index ?index}) (om/get-query Question)}])
-
-  Object
-  (render [this]
-    (let [{:keys [question/edit]} (om/props this)
-          {:keys [text answers]} edit]
-      (html
-       [:div
-        [:input
-         {:type "text"
-          :value (str text)
-          :on-change
-          (fn [e]
-            (let [new-text (.. e -target -value)]
-              (om/transact!
-               this `[(question/edit {:text ~new-text})])))}]
-        [:button
-         {:on-click
-          (fn [e]
-            (om/update-query!
-             this update-in [:params :index] inc))}
-         "Next"]]))))
-
-(def question-editor (om/factory QuestionEditor))
-
-
-(defui Form
-  static om/IQuery
-  (query [this]
-    (into
-     [:id :name {:questions (om/get-query Question)}]
-     (om/get-query QuestionEditor)))
+    [:id :name {:questions (om/get-query Question)}
+     {'(:question/edit {:index ?index}) (om/get-query Question)}])
 
   Object
   (render [this]
@@ -175,7 +152,7 @@
        [:div
         [:p "Form: " name]
         [:ul (map question questions)]
-        (question-editor {:question/edit edit})]))))
+        (question-editor this edit)]))))
 
 
 (def reconciler
