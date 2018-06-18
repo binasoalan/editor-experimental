@@ -27,7 +27,15 @@
                               :answers [{:id 6
                                          :text "Hmmm"}
                                         {:id 7
-                                         :text "About right"}]}]})
+                                         :text "About right"}]}]
+                 :question/edit {:id 1
+                                 :text "How do you do?"
+                                 :answers [{:id 1
+                                            :text "OK"}
+                                           {:id 2
+                                            :text "Not bad"}
+                                           {:id 3
+                                            :text "Third"}]}})
 
 (defmulti read om/dispatch)
 
@@ -36,15 +44,10 @@
   (let [st @state]
     {:value (om/db->tree query (get st key) st)}))
 
-;; (defmethod read :questions/edit
-;;   [{:keys [query state]} _ _]
-;;   (let [st @state]
-;;     {:value (om/db->tree query (get st :questions) st)}))
-
 (defmethod read :question/edit
-  [{:keys [query state]} _ {:keys [index]}]
+  [{:keys [query state ast]} key _]
   (let [st @state]
-    {:value (nth (om/db->tree query (get st :questions) st) index)}))
+    {:value (om/db->tree query (get st key) st)}))
 
 (defmethod read :answers
   [{:keys [query state]} key _]
@@ -61,14 +64,21 @@
 
 (defmulti mutate om/dispatch)
 
-;; (defmethod mutate 'answer/edit
-;;   [{:keys [state]} _ {:keys [text index]}]
-;;   (let [ref (nth (:answers @state) index)]
-;;     {:action #(swap! state update-in ref assoc :text text)}))
-
 (defmethod mutate 'question/edit
   [{:keys [state ref]} _ {:keys [text]}]
   {:action #(swap! state update-in ref assoc :text text)})
+
+(defmethod mutate 'question/next
+  [{:keys [state ref]} _ _]
+  (let [[_ curr-id] ref
+        {:keys [questions]} @state
+        next-question (if curr-id
+                        (fnext
+                         (drop-while
+                          (fn [[_ id]]
+                            (not= id curr-id)) questions))
+                        (first questions))]
+    {:action #(swap! state assoc :question/edit next-question)}))
 
 (defmethod mutate 'answer/hodor
   [{:keys [state ref]} _ _]
@@ -124,21 +134,16 @@
 
 (defui QuestionEditor
   static om/Ident
-  (ident [this {:keys [question/edit]}]
-    [:question/by-id (:id edit)])
-
-  static om/IQueryParams
-  (params [this]
-    {:index 0})
+  (ident [this {:keys [id]}]
+    [:question/by-id id])
 
   static om/IQuery
   (query [this]
-    [{'(:question/edit {:index ?index}) (om/get-query Question)}])
+    [:id :text {:answers (om/get-query Answer)}])
 
   Object
   (render [this]
-    (let [{:keys [question/edit]} (om/props this)
-          {:keys [text answers]} edit]
+    (let [{:keys [text answers]} (om/props this)]
       (html
        [:div
         [:input
@@ -152,19 +157,21 @@
         [:button
          {:on-click
           (fn [e]
-            (om/update-query!
-             this update-in [:params :index] inc))}
+            (om/transact! this `[(question/next)]))}
          "Next"]]))))
 
 (def question-editor (om/factory QuestionEditor))
 
 
 (defui Form
+  static om/IQueryParams
+  (params [this]
+    {:index 0})
+
   static om/IQuery
   (query [this]
-    (into
-     [:id :name {:questions (om/get-query Question)}]
-     (om/get-query QuestionEditor)))
+    [:id :name {:questions (om/get-query Question)}
+     {:question/edit (om/get-query QuestionEditor)}])
 
   Object
   (render [this]
@@ -175,7 +182,7 @@
        [:div
         [:p "Form: " name]
         [:ul (map question questions)]
-        (question-editor {:question/edit edit})]))))
+        (question-editor edit)]))))
 
 
 (def reconciler
