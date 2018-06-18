@@ -36,15 +36,10 @@
   (let [st @state]
     {:value (om/db->tree query (get st key) st)}))
 
-;; (defmethod read :questions/edit
-;;   [{:keys [query state]} _ _]
-;;   (let [st @state]
-;;     {:value (om/db->tree query (get st :questions) st)}))
-
 (defmethod read :question/edit
   [{:keys [query state]} _ {:keys [index]}]
   (let [st @state]
-    {:value (nth (om/db->tree query (get st :questions) st) index)}))
+    {:value (om/db->tree query (nth (:questions st) index) st)}))
 
 (defmethod read :answers
   [{:keys [query state]} key _]
@@ -60,11 +55,6 @@
 
 
 (defmulti mutate om/dispatch)
-
-;; (defmethod mutate 'answer/edit
-;;   [{:keys [state]} _ {:keys [text index]}]
-;;   (let [ref (nth (:answers @state) index)]
-;;     {:action #(swap! state update-in ref assoc :text text)}))
 
 (defmethod mutate 'question/edit
   [{:keys [state ref]} _ {:keys [text]}]
