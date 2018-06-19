@@ -121,28 +121,37 @@
    "Next"])
 
 
-(defui Form
+(defui Editor
   static om/IQueryParams
   (params [this]
     {:index 0})
 
+  Object
+  (render [this]
+    (let [questions (om/props this)
+          {:keys [index]}  (om/get-params this)
+          focused-question (nth questions index)]
+      (html
+       [:div
+        (question-text-input this index focused-question)
+        (next-button this index)]))))
+
+(def editor (om/factory Editor))
+
+
+(defui Form
   static om/IQuery
   (query [this]
     [:id :name {:questions (om/get-query Question)}])
 
   Object
   (render [this]
-    (let [{:keys [name
-                  questions]} (om/props this)
-          {:keys [index]}     (om/get-params this)
-          focused-question    (nth questions index)]
-      (println "index:" index)
+    (let [{:keys [name questions]} (om/props this)]
       (html
        [:div
         [:p "Form: " name]
         [:ul (map question questions)]
-        (question-text-input this index focused-question)
-        (next-button this index)]))))
+        (editor questions)]))))
 
 
 (def reconciler
