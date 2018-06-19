@@ -37,6 +37,18 @@
                                            {:id 3
                                             :text "Third"}]}})
 
+(defn- position [item coll]
+  (first
+   (keep-indexed
+    #(when (= item %2) (inc %1)) coll)))
+
+(defn- next-question [current-id questions]
+  (fnext
+   (drop-while
+    (fn [[_ id]]
+      (not= id current-id)) questions)))
+
+
 (defmulti read om/dispatch)
 
 (defmethod read :questions
@@ -45,14 +57,10 @@
     {:value (om/db->tree query (get st key) st)}))
 
 (defmethod read :question/edit
-  [{:keys [query state ast]} key _]
-  (let [st @state]
-    {:value (om/db->tree query (get st key) st)}))
-
-(defmethod read :answers
-  [{:keys [query state]} key _]
-  (let [st @state]
-    {:value (om/db->tree query (get st key) st)}))
+  [{:keys [query state]} _ _]
+  (let [{:keys [questions question/edit] :as st} @state]
+    {:value (-> (om/db->tree query edit st)
+                (assoc :position (position edit questions)))}))
 
 (defmethod read :default
   [{:keys [state]} key _]
@@ -66,31 +74,32 @@
 
 (defmethod mutate 'question/edit
   [{:keys [state ref]} _ {:keys [text]}]
-  {:action #(swap! state update-in ref assoc :text text)})
+  {:action #(swap! state
+                   update-in ref
+                   assoc :text text)})
 
 (defmethod mutate 'question/next
   [{:keys [state ref]} _ _]
-  (let [[_ curr-id] ref
-        {:keys [questions]} @state
-        next-question (if curr-id
-                        (fnext
-                         (drop-while
-                          (fn [[_ id]]
-                            (not= id curr-id)) questions))
-                        (first questions))]
-    {:action #(swap! state assoc :question/edit next-question)}))
+  (let [{:keys [questions]} @state
+        [_ id] ref]
+    {:action #(swap! state
+                     assoc :question/edit
+                     (if id
+                       (next-question id questions)
+                       (first questions)))}))
 
 (defmethod mutate 'answer/hodor
   [{:keys [state ref]} _ _]
-  {:action #(swap! state update-in ref assoc :text "Hodor")})
+  {:action #(swap! state
+                   update-in ref
+                   assoc :text "Hodor")})
 
 
 (defn hodor-button [parent]
   [:button
    {:on-click
     (fn [e]
-      (om/transact!
-       parent '[(answer/hodor)]))}
+      (om/transact! parent '[(answer/hodor)]))}
    "Hodor"])
 
 (defui Answer
@@ -122,8 +131,7 @@
 
   Object
   (render [this]
-    (let [{:keys [text
-                  answers]} (om/props this)]
+    (let [{:keys [text answers]} (om/props this)]
       (html
        [:div
         [:p "Question: " text]
@@ -139,13 +147,14 @@
 
   static om/IQuery
   (query [this]
-    [:id :text {:answers (om/get-query Answer)}])
+    [:id :position :text {:answers (om/get-query Answer)}])
 
   Object
   (render [this]
-    (let [{:keys [text answers]} (om/props this)]
+    (let [{:keys [position text answers]} (om/props this)]
       (html
        [:div
+        [:p "Viewing question " position]
         [:input
          {:type "text"
           :value (str text)
