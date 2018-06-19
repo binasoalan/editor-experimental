@@ -60,7 +60,9 @@
   [{:keys [query state]} _ _]
   (let [{:keys [questions question/edit] :as st} @state]
     {:value (-> (om/db->tree query edit st)
-                (assoc :position (position edit questions)))}))
+                (assoc
+                 :position (position edit questions)
+                 :total (count questions)))}))
 
 (defmethod read :default
   [{:keys [state]} key _]
@@ -87,6 +89,12 @@
                      (if id
                        (next-question id questions)
                        (first questions)))}))
+
+(defmethod mutate 'answer/edit
+  [{:keys [state ref]} _ {:keys [text]}]
+  {:action #(swap! state
+                   update-in ref
+                   assoc :text text)})
 
 (defmethod mutate 'answer/hodor
   [{:keys [state ref]} _ _]
@@ -140,6 +148,32 @@
 (def question (om/factory Question {:keyfn :id}))
 
 
+(defui AnswerEditor
+  static om/Ident
+  (ident [this {:keys [id]}]
+    [:answer/by-id id])
+
+  static om/IQuery
+  (query [this]
+    [:id :text])
+
+  Object
+  (render [this]
+    (let [{:keys [text]} (om/props this)]
+      (html
+       [:li
+        [:input
+         {:type "text"
+          :value (str text)
+          :on-change
+          (fn [e]
+            (let [new-text (.. e -target -value)]
+              (om/transact!
+               this `[(answer/edit {:text ~new-text})])))}]]))))
+
+(def answer-editor (om/factory AnswerEditor {:keyfn :id}))
+
+
 (defui QuestionEditor
   static om/Ident
   (ident [this {:keys [id]}]
@@ -147,14 +181,14 @@
 
   static om/IQuery
   (query [this]
-    [:id :position :text {:answers (om/get-query Answer)}])
+    [:id :position :total :text {:answers (om/get-query AnswerEditor)}])
 
   Object
   (render [this]
-    (let [{:keys [position text answers]} (om/props this)]
+    (let [{:keys [position total text answers]} (om/props this)]
       (html
        [:div
-        [:p "Viewing question " position]
+        [:p "Viewing question " position " out of " total]
         [:input
          {:type "text"
           :value (str text)
@@ -163,6 +197,7 @@
             (let [new-text (.. e -target -value)]
               (om/transact!
                this `[(question/edit {:text ~new-text})])))}]
+        [:ul (map answer-editor answers)]
         [:button
          {:on-click
           (fn [e]
