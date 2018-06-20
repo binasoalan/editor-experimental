@@ -208,10 +208,6 @@
 
 
 (defui Form
-  static om/IQueryParams
-  (params [this]
-    {:index 0})
-
   static om/IQuery
   (query [this]
     [:id :name {:questions (om/get-query Question)}
